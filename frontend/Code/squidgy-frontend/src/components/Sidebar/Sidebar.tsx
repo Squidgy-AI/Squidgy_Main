@@ -42,13 +42,23 @@ const Sidebar: React.FC<SidebarProps> = ({
   const fetchPeople = async () => {
     if (!profile) return;
     
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .neq('id', profile.id);
+    try {
+      // Use the secure user_connections view to only get people you're connected to
+      const { data, error } = await supabase
+        .from('user_connections')
+        .select('*')
+        .order('full_name');
+        
+      if (error) {
+        console.error('Error fetching connected people:', error);
+        setPeople([]);
+        return;
+      }
       
-    if (!error && data) {
-      setPeople(data);
+      setPeople(data || []);
+    } catch (error) {
+      console.error('Error fetching people:', error);
+      setPeople([]);
     }
   };
   

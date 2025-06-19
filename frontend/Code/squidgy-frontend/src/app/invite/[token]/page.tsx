@@ -24,7 +24,7 @@ interface InvitationData {
 export default function InvitePage() {
   const params = useParams();
   const router = useRouter();
-  const { user, signUp, signIn } = useAuth();
+  const { user, profile, signUp, signIn } = useAuth();
   const [invitation, setInvitation] = useState<InvitationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +93,7 @@ export default function InvitePage() {
   };
 
   const acceptInvitation = async () => {
-    if (!invitation || !user) return;
+    if (!invitation || !user || !profile) return;
 
     try {
       setProcessing(true);
@@ -103,7 +103,7 @@ export default function InvitePage() {
         .from('invitations')
         .update({ 
           status: 'accepted',
-          recipient_id: user.id
+          recipient_id: profile.user_id
         })
         .eq('id', invitation.id);
 
@@ -117,7 +117,7 @@ export default function InvitePage() {
           .from('group_members')
           .insert({
             group_id: invitation.group_id,
-            user_id: user.id,
+            user_id: profile.user_id,
             role: 'member'
           });
 

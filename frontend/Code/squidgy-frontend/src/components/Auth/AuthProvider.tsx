@@ -299,7 +299,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Check if there's already a user with this email
       const { data: existingUsers } = await supabase
         .from('profiles')
-        .select('id, email')
+        .select('user_id, email')
         .eq('email', email)
         .limit(1);
       
@@ -310,8 +310,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data, error } = await supabase
         .from('invitations')
         .insert({
-          sender_id: user?.id,
-          recipient_id: existingUsers && existingUsers.length > 0 ? existingUsers[0].id : null,
+          sender_id: profile?.user_id,
+          recipient_id: existingUsers && existingUsers.length > 0 ? existingUsers[0].user_id : null,
           recipient_email: email,
           group_id: groupId,
           company_id: profile?.company_id,

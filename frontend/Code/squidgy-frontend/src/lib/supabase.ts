@@ -88,4 +88,19 @@ export interface ForgotPassword {
   used_at?: string;
 }
 
+export interface Invitation {
+  id: string;
+  sender_id: string; // References profiles.user_id
+  recipient_id?: string; // References profiles.user_id
+  recipient_email: string;
+  company_id?: string;
+  group_id?: string;
+  status: 'pending' | 'accepted' | 'declined';
+  token: string;
+  created_at: string;
+  expires_at: string;
+  sender?: Profile; // Populated via join
+  recipient?: Profile; // Populated via join
+}
+
 export default supabase;

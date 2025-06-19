@@ -7,6 +7,7 @@ import { useChat } from '@/context/ChatContext';
 import { supabase } from '@/lib/supabase';
 import { Users, User, Bot, UserPlus, FolderPlus, LogOut, Settings, MessageSquare, Search, X } from 'lucide-react';
 import InvitationList from '../Invitations/InvitationList';
+import ProfileViewer from '../Profile/ProfileViewer';
 
 interface SidebarProps {
   onSettingsOpen: () => void;
@@ -63,6 +64,8 @@ const EnhancedSidebar: React.FC<SidebarProps> = ({ onSettingsOpen }) => {
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedProfile, setSelectedProfile] = useState<any>(null);
+  const [showProfileViewer, setShowProfileViewer] = useState(false);
   
   // Fetch people and groups
   useEffect(() => {
@@ -87,20 +90,36 @@ const EnhancedSidebar: React.FC<SidebarProps> = ({ onSettingsOpen }) => {
       )
     : groups;
   
-  // Fetch people from database
+  // Fetch connected people from database (secure - only people you're connected to)
   const fetchPeople = async () => {
     try {
+      console.log('Fetching people with secure view...');
+      
+      // Use the secure view - this will return empty array if no connections
       const { data, error } = await supabase
-        .from('profiles')
+        .from('user_connections')
         .select('*')
-        .neq('id', profile?.id || '')
         .order('full_name');
         
-      if (error) throw error;
+      console.log('Secure view result:', { data, error, count: data?.length || 0 });
+        
+      if (error) {
+        console.error('Error fetching connected people:', error);
+        // If there's an error with the view, show empty list (secure default)
+        setPeople([]);
+        return;
+      }
       
+      // Always use the secure view result, even if it's empty
+      // This ensures users only see people they're actually connected to
       setPeople(data || []);
+      
+      if ((data || []).length === 0) {
+        console.log('No connected people found - this is correct if you have no accepted invitations');
+      }
     } catch (error) {
       console.error('Error fetching people:', error);
+      setPeople([]);
     }
   };
   
@@ -111,7 +130,7 @@ const EnhancedSidebar: React.FC<SidebarProps> = ({ onSettingsOpen }) => {
       const { data: memberData, error: memberError } = await supabase
         .from('group_members')
         .select('group_id')
-        .eq('user_id', profile?.id || '');
+        .eq('user_id', profile?.user_id || '');
         
       if (memberError) throw memberError;
       
@@ -146,7 +165,7 @@ const EnhancedSidebar: React.FC<SidebarProps> = ({ onSettingsOpen }) => {
     try {
       const { data: existingUser, error: userError } = await supabase
         .from('profiles')
-        .select('id')
+        .select('user_id')
         .eq('email', inviteEmail)
         .maybeSingle();
         
@@ -160,8 +179,8 @@ const EnhancedSidebar: React.FC<SidebarProps> = ({ onSettingsOpen }) => {
       const { error: inviteError } = await supabase
         .from('invitations')
         .insert({
-          sender_id: profile.id,
-          recipient_id: existingUser?.id || null,
+          sender_id: profile.user_id,
+          recipient_id: existingUser?.user_id || null,
           recipient_email: inviteEmail,
           company_id: profile.company_id || null,
           token,
@@ -198,7 +217,7 @@ const EnhancedSidebar: React.FC<SidebarProps> = ({ onSettingsOpen }) => {
         .from('groups')
         .insert({
           name: newGroupName.trim(),
-          created_by: profile.id
+          created_by: profile.user_id
         })
         .select()
         .single();
@@ -210,7 +229,7 @@ const EnhancedSidebar: React.FC<SidebarProps> = ({ onSettingsOpen }) => {
         .from('group_members')
         .insert({
           group_id: groupData.id,
-          user_id: profile.id,
+          user_id: profile.user_id,
           role: 'admin',
           is_agent: false
         });
@@ -218,12 +237,12 @@ const EnhancedSidebar: React.FC<SidebarProps> = ({ onSettingsOpen }) => {
       if (memberError) throw memberError;
       
       // Add selected members to the group
-      for (const memberId of selectedMembers) {
+      for (const memberUserId of selectedMembers) {
         await supabase
           .from('group_members')
           .insert({
             group_id: groupData.id,
-            user_id: memberId,
+            user_id: memberUserId,
             role: 'member',
             is_agent: false
           });
@@ -311,6 +330,18 @@ const EnhancedSidebar: React.FC<SidebarProps> = ({ onSettingsOpen }) => {
   // Search for users
   const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
+  };
+
+  // Handle profile viewing
+  const handleProfileView = (person: any) => {
+    setSelectedProfile(person);
+    setShowProfileViewer(true);
+  };
+
+  // Close profile viewer
+  const handleCloseProfileViewer = () => {
+    setShowProfileViewer(false);
+    setSelectedProfile(null);
   };
   
   return (
@@ -444,11 +475,9 @@ const EnhancedSidebar: React.FC<SidebarProps> = ({ onSettingsOpen }) => {
             {filteredPeople.length > 0 ? (
               filteredPeople.map(person => (
                 <div 
-                  key={person.id}
-                  className={`p-2 rounded-lg hover:bg-[#2D3B4F] cursor-pointer flex items-center ${
-                    currentSessionId === person.id && !isGroupSession ? 'bg-[#2D3B4F]' : ''
-                  }`}
-                  onClick={() => handleSessionSelect(person.id)}
+                  key={person.user_id}
+                  className="p-2 rounded-lg hover:bg-[#2D3B4F] cursor-pointer flex items-center transition-colors"
+                  onClick={() => handleProfileView(person)}
                 >
                   <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center mr-3 overflow-hidden">
                     {person.avatar_url ? (
@@ -595,13 +624,13 @@ const EnhancedSidebar: React.FC<SidebarProps> = ({ onSettingsOpen }) => {
                 {people.length > 0 ? (
                   people.map(person => (
                     <div 
-                      key={person.id}
+                      key={person.user_id}
                       className="p-2 hover:bg-[#374863] flex items-center cursor-pointer"
-                      onClick={() => toggleMemberSelection(person.id)}
+                      onClick={() => toggleMemberSelection(person.user_id)}
                     >
                       <input 
                         type="checkbox" 
-                        checked={selectedMembers.includes(person.id)}
+                        checked={selectedMembers.includes(person.user_id)}
                         onChange={() => {}}
                         className="mr-2"
                       />
@@ -674,6 +703,14 @@ const EnhancedSidebar: React.FC<SidebarProps> = ({ onSettingsOpen }) => {
             </div>
           </div>
         </div>
+      )}
+      
+      {/* Profile Viewer Modal */}
+      {showProfileViewer && selectedProfile && (
+        <ProfileViewer 
+          profile={selectedProfile}
+          onClose={handleCloseProfileViewer}
+        />
       )}
     </div>
   );
