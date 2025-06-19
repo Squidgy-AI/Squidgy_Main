@@ -1,7 +1,8 @@
 -- Profiles table (User accounts)
 CREATE TABLE profiles (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
-  email TEXT NOT NULL,
+  user_id UUID DEFAULT uuid_generate_v4() UNIQUE NOT NULL,
+  email TEXT NOT NULL UNIQUE,
   full_name TEXT,
   avatar_url TEXT,
   company_id UUID REFERENCES companies(id) ON DELETE SET NULL,
@@ -139,4 +140,16 @@ CREATE TABLE guest_users (
   phone TEXT UNIQUE,
   display_name TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
+-- Users forgot password table (For password reset functionality)
+CREATE TABLE users_forgot_password (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(user_id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  reset_token TEXT NOT NULL UNIQUE,
+  token_expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  is_used BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  used_at TIMESTAMP WITH TIME ZONE
 );

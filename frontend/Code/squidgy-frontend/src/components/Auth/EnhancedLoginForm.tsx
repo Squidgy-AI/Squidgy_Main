@@ -41,13 +41,20 @@ const EnhancedLoginForm: React.FC = () => {
         }
         await signUp({ email, password, fullName });
         setMessage('Registration successful! Please check your email to verify your account.');
-        setMode('login');
+        setTimeout(() => {
+          setMode('login');
+        }, 2000);
       } else if (mode === 'forgotPassword') {
         await sendPasswordResetEmail(email);
         setMessage('Password reset link sent to your email!');
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred');
+      // Handle rate limiting specifically
+      if (err.message.includes('rate limit') || err.message.includes('Too many')) {
+        setError('Too many attempts. Please wait 5-10 minutes and try again. If this persists, the rate limits may need to be adjusted in Supabase dashboard.');
+      } else {
+        setError(err.message || 'An error occurred');
+      }
     } finally {
       setLoading(false);
     }
@@ -109,7 +116,7 @@ const EnhancedLoginForm: React.FC = () => {
           />
         </div>
         
-        {mode !== 'forgotPassword' && (
+        {(mode === 'login' || mode === 'signup') && (
           <div>
             <label htmlFor="password" className="block text-gray-300 mb-2">
               Password

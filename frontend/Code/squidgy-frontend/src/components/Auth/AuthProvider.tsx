@@ -5,6 +5,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { Provider, Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import type { Profile } from '@/lib/supabase';
+import { authService } from '@/lib/auth-service';
 
 type AuthContextType = {
   session: Session | null;
@@ -204,34 +205,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Sign in with provider (email, google, etc.)
   const signIn = async (provider: string, credentials?: { email?: string; password?: string }) => {
     try {
-      let result;
-      
       if (provider === 'email') {
         if (!credentials?.email || !credentials.password) {
           throw new Error('Email and password are required');
         }
         
-        result = await supabase.auth.signInWithPassword({
+        const result = await authService.signIn({
           email: credentials.email,
           password: credentials.password,
         });
+        
+        // Update local state
+        setUser(result.user);
+        setProfile(result.profile);
+        
       } else if (['google', 'apple', 'github', 'whatsapp'].includes(provider)) {
         // Handle whatsapp special case
         if (provider === 'whatsapp') {
           throw new Error('WhatsApp login is not yet implemented');
         }
         
-        result = await supabase.auth.signInWithOAuth({
+        const result = await supabase.auth.signInWithOAuth({
           provider: provider as Provider,
           options: {
             redirectTo: `${window.location.origin}/auth/callback`,
           },
         });
+        
+        if (result.error) throw result.error;
       } else {
         throw new Error(`Unsupported sign-in method: ${provider}`);
       }
-      
-      if (result.error) throw result.error;
     } catch (error: any) {
       throw new Error(error.message || 'Sign-in failed');
     }
@@ -240,19 +244,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Sign up with email and password
   const signUp = async ({ email, password, fullName }: { email: string; password: string; fullName: string }) => {
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-        },
-      });
+      const result = await authService.signUp({ email, password, fullName });
       
-      if (error) throw error;
+      // Update local state
+      setUser(result.user);
+      setProfile(result.profile);
       
-      // Profile will be created by the database trigger or onAuthStateChange handler
     } catch (error: any) {
       throw new Error(error.message || 'Sign-up failed');
     }
@@ -270,11 +267,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Send password reset email
   const sendPasswordResetEmail = async (email: string) => {
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/reset-password`,
-      });
-      
-      if (error) throw error;
+      await authService.sendPasswordResetEmail({ email });
     } catch (error: any) {
       throw new Error(error.message || 'Failed to send reset email');
     }
