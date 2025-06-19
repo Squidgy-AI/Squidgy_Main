@@ -30,6 +30,7 @@ import WebSocketService from '@/services/WebSocketService';
 import StreamingAvatar from "@heygen/streaming-avatar";
 import WebSocketDebugger from '../WebSocketDebugger';
 import AgentGreeting from '../AgentGreeting';
+import SquidgyLogo from '../Auth/SquidgyLogo';
 
 const EnhancedDashboard: React.FC = () => {
   type WebSocketLog = {
@@ -325,9 +326,7 @@ const agents = AGENT_CONFIG;
             </svg>
           </button>
           <div className="flex items-center">
-            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center mr-2">
-              <span className="text-lg font-bold">S</span>
-            </div>
+            <SquidgyLogo width={32} className="mr-2" />
             <h1 className="text-xl font-bold">Squidgy</h1>
           </div>
           <div className="ml-4 flex items-center">

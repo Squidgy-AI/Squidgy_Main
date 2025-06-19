@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './AuthProvider';
-import Image from 'next/image';
+import SquidgyLogo from './SquidgyLogo';
 
 type AuthMode = 'login' | 'signup' | 'forgotPassword';
 
@@ -63,9 +63,7 @@ const EnhancedLoginForm: React.FC = () => {
   return (
     <div className="bg-[#2D3B4F] p-8 rounded-lg shadow-md w-full max-w-md">
       <div className="flex justify-center mb-6">
-        <div className="w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center">
-          <span className="text-3xl font-bold text-white">S</span>
-        </div>
+        <SquidgyLogo width={96} />
       </div>
       
       <h2 className="text-2xl font-bold text-white mb-6 text-center">
