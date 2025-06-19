@@ -12,15 +12,11 @@ import {
   Send, 
   Video, 
   Mic, 
-  ChevronDown, 
-  ChevronUp, 
-  Code2, 
   Settings, 
   LogOut, 
   UserPlus, 
   FolderPlus, 
-  X, 
-  PlusCircle 
+  X 
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import ProfileSettings from '../ProfileSettings';
@@ -53,7 +49,7 @@ const EnhancedDashboard: React.FC = () => {
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
-  const [showDebugConsole, setShowDebugConsole] = useState(false);
+  // const [showDebugConsole, setShowDebugConsole] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected');
   const [agentThinking, setAgentThinking] = useState<string | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
@@ -84,39 +80,106 @@ const agents = AGENT_CONFIG;
     if (profile) {
       fetchPeople();
       fetchGroups();
+      initializeAgentSessions();
     }
   }, [profile]);
   
-  // Connect WebSocket when session changes
-  useEffect(() => {
-    if (!profile || !currentSessionId) return;
+  // Initialize agent sessions on login
+  const initializeAgentSessions = async () => {
+    if (!profile) return;
     
-    // Disconnect existing WebSocket
-    if (websocket) {
-      websocket.close();
+    // For now, skip session persistence and just select the first agent
+    // This ensures the app works even without the sessions table
+    try {
+      if (agents.length > 0) {
+        const firstAgent = agents[0]; // Default to first agent (Pre-Sales Consultant)
+        setSelectedAgent(firstAgent);
+        setSelectedAvatarId(firstAgent.id);
+        console.log(`Auto-selected default agent: ${firstAgent.name}`);
+      }
+    } catch (error) {
+      console.error('Error initializing agent sessions:', error);
     }
     
-    // Create new WebSocket connection
-    const ws = new WebSocketService({
-      userId: profile.id,
-      sessionId: currentSessionId,
-      onStatusChange: setConnectionStatus,
-      onMessage: handleWebSocketMessage,
-      onLog: (log) => {
-        setWebsocketLogs(prev => [...prev, {
-          timestamp: new Date(),
-          type: log.type,
-          message: log.message,
-          data: log.data
-        }].slice(-100));
+    // TODO: Uncomment this when sessions table is properly set up
+    /*
+    try {
+      // Get the most recent session across all agents
+      const { data: recentSession, error: sessionError } = await supabase
+        .from('sessions')
+        .select('*, agent_id')
+        .eq('user_id', profile.user_id)
+        .eq('is_group', false)
+        .not('agent_id', 'is', null)
+        .order('last_active', { ascending: false })
+        .limit(1)
+        .single();
+        
+      if (sessionError && sessionError.code !== 'PGRST116') {
+        console.error('Error fetching recent session:', sessionError);
+        return;
       }
-    });
+      
+      if (recentSession) {
+        const agent = agents.find(a => a.id === recentSession.agent_id);
+        if (agent) {
+          await handleAgentSelect(agent);
+          console.log(`Auto-loaded most recent session for agent: ${agent.name}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error initializing agent sessions:', error);
+    }
+    */
+  };
+  
+  // Connect WebSocket when session changes
+  useEffect(() => {
+    if (!profile || !currentSessionId) {
+      // Clean up existing connection if no session
+      if (websocket) {
+        websocket.close();
+        setWebsocket(null);
+      }
+      return;
+    }
     
-    ws.connect();
-    setWebsocket(ws);
+    // Add a small delay to prevent rapid connection creation/destruction
+    const connectTimer = setTimeout(() => {
+      // Disconnect existing WebSocket
+      if (websocket) {
+        websocket.close();
+      }
+      
+      // Create new WebSocket connection
+      const ws = new WebSocketService({
+        userId: profile.id,
+        sessionId: currentSessionId,
+        onStatusChange: setConnectionStatus,
+        onMessage: handleWebSocketMessage,
+        onLog: (log) => {
+          setWebsocketLogs(prev => [...prev, {
+            timestamp: new Date(),
+            type: log.type,
+            message: log.message,
+            data: log.data
+          }].slice(-100));
+        }
+      });
+      
+      ws.connect().catch(error => {
+        console.error('Failed to connect WebSocket:', error);
+        setConnectionStatus('disconnected');
+      });
+      
+      setWebsocket(ws);
+    }, 100); // Small delay to prevent rapid connections
     
     return () => {
-      ws.close();
+      clearTimeout(connectTimer);
+      if (websocket) {
+        websocket.close();
+      }
     };
   }, [profile, currentSessionId]);
   
@@ -180,17 +243,23 @@ const agents = AGENT_CONFIG;
       case 'agent_response':
         if (data.final) {
           setAgentThinking(null);
-          setMessages(prev => [...prev, { 
+          const agentMessage = { 
             sender: 'agent', 
             text: data.message 
-          }]);
+          };
+          setMessages(prev => [...prev, agentMessage]);
+          
+          // Save agent message to database
+          if (currentSessionId) {
+            saveMessageToDatabase(agentMessage.text, agentMessage.sender);
+          }
           
           // Speak with avatar if enabled
           if (avatarRef.current && videoEnabled && voiceEnabled) {
             avatarRef.current.speak({
               text: data.message,
-              taskType: "REPEAT",
-              taskMode: "SYNC"
+              taskType: "talk" as any,
+              taskMode: 1 as any
             });
           }
         }
@@ -213,33 +282,159 @@ const agents = AGENT_CONFIG;
   // setActiveSection('agents'); // Switch to agents tab so user can select
   // };
 
-  const handleNewSession = () => {
-  if (activeSection === 'agents' && selectedAgent) {
-    // Create new session with currently selected agent
-    const newSessionId = `${profile?.id}_${selectedAgent.id}_${Date.now()}`;
-    setCurrentSessionId(newSessionId);
-    setIsGroupSession(false);
-    setMessages([]);
-    // Don't change the selected agent or avatar since user wants to chat with the same agent
-  } else {
-    // No agent selected, switch to agents tab
-    setCurrentSessionId('');
-    setSelectedAgent(null);
-    setSelectedAvatarId(''); // ADD THIS LINE to clear avatar
-    setIsGroupSession(false);
-    setMessages([]);
-    setActiveSection('agents');
-  }
+  const handleNewSession = async () => {
+    if (activeSection === 'agents' && selectedAgent) {
+      try {
+        // Create new session with currently selected agent
+        const newSessionId = `${profile?.user_id}_${selectedAgent.id}_${Date.now()}`;
+        
+        // Update current session state (no database persistence for now)
+        setCurrentSessionId(newSessionId);
+        setIsGroupSession(false);
+        setMessages([]);
+        
+        // Close any existing avatar streaming session
+        if (websocket) {
+          websocket.close();
+        }
+        
+        console.log(`New chat session created for agent: ${selectedAgent.name}`);
+      } catch (error) {
+        console.error('Error in handleNewSession:', error);
+      }
+    } else {
+      // No agent selected, switch to agents tab
+      setCurrentSessionId('');
+      setSelectedAgent(null);
+      setSelectedAvatarId('');
+      setIsGroupSession(false);
+      setMessages([]);
+      setActiveSection('agents');
+    }
+  };
+  
+  const handleAgentSelect = async (agent: any) => {
+    try {
+      setSelectedAgent(agent);
+      setSelectedAvatarId(agent.id);
+      setIsGroupSession(false);
+      
+      // Close any existing avatar streaming session
+      if (websocket) {
+        websocket.close();
+      }
+      
+      // For now, just create a simple session ID and clear messages
+      // This will work without the sessions table
+      const simpleSessionId = `${profile?.user_id}_${agent.id}_${Date.now()}`;
+      setCurrentSessionId(simpleSessionId);
+      setMessages([]);
+      
+      console.log(`Selected agent: ${agent.name}, Session: ${simpleSessionId}`);
+      
+      // TODO: Uncomment when sessions table is available
+      /*
+      // Find the latest session for this agent
+      const { data: latestSession, error: sessionError } = await supabase
+        .from('sessions')
+        .select('*')
+        .eq('user_id', profile?.user_id)
+        .eq('agent_id', agent.id)
+        .eq('is_group', false)
+        .order('last_active', { ascending: false })
+        .limit(1)
+        .single();
+        
+      if (sessionError && sessionError.code !== 'PGRST116') {
+        console.error('Error fetching latest session:', sessionError);
+        return;
+      }
+      
+      if (latestSession) {
+        // Load existing session
+        setCurrentSessionId(latestSession.id);
+        
+        // Load chat history for this session
+        const { data: chatHistory, error: historyError } = await supabase
+          .from('chat_history')
+          .select('*')
+          .eq('session_id', latestSession.id)
+          .order('timestamp', { ascending: true });
+          
+        if (historyError) {
+          console.error('Error loading chat history:', historyError);
+        } else {
+          const formattedMessages = chatHistory.map(msg => ({
+            id: msg.id,
+            sender: msg.sender,
+            text: msg.message,
+            timestamp: msg.timestamp
+          }));
+          setMessages(formattedMessages);
+        }
+        
+        // Update session last_active timestamp
+        await supabase
+          .from('sessions')
+          .update({ last_active: new Date().toISOString() })
+          .eq('id', latestSession.id);
+          
+        console.log(`Loaded session for agent: ${agent.name}, Messages: ${chatHistory?.length || 0}`);
+      } else {
+        // No existing session, clear messages but don't create a new session yet
+        setCurrentSessionId('');
+        setMessages([]);
+        console.log(`No existing session for agent: ${agent.name}`);
+      }
+      */
+    } catch (error) {
+      console.error('Error in handleAgentSelect:', error);
+    }
+  };
+  
+  const saveMessageToDatabase = async (message: string, sender: string) => {
+    if (!currentSessionId || !profile) return;
+    
+    try {
+      const { error } = await supabase
+        .from('chat_history')
+        .insert({
+          user_id: profile.user_id,
+          session_id: currentSessionId,
+          sender: sender,
+          message: message,
+          timestamp: new Date().toISOString()
+        });
+        
+      if (error) {
+        console.error('Error saving message to database:', error);
+      }
+    } catch (error) {
+      console.error('Error in saveMessageToDatabase:', error);
+    }
   };
   
   const sendMessage = async () => {
-    if (!inputMessage.trim() || !websocket) return;
+    if (!inputMessage.trim() || !websocket || !selectedAgent) return;
     
-    // Add user message
-    setMessages(prev => [...prev, { sender: 'user', text: inputMessage.trim() }]);
+    // If no current session, create one (in-memory only for now)
+    let sessionId = currentSessionId;
+    if (!sessionId) {
+      sessionId = `${profile?.user_id}_${selectedAgent.id}_${Date.now()}`;
+      setCurrentSessionId(sessionId);
+      console.log(`Auto-created session for agent: ${selectedAgent.name}`);
+    }
+    
+    const userMessage = inputMessage.trim();
+    
+    // Add user message to UI
+    setMessages(prev => [...prev, { sender: 'user', text: userMessage }]);
+    
+    // Save user message to database (chat_history should work)
+    await saveMessageToDatabase(userMessage, 'user');
     
     // Send via WebSocket
-    await websocket.sendMessage(inputMessage.trim());
+    await websocket.sendMessage(userMessage);
     
     setInputMessage('');
     setAgentThinking('AI is thinking...');
@@ -266,9 +461,9 @@ const agents = AGENT_CONFIG;
         alert(`✅ ${result.message}`);
       } else if (result.status === 'partial_success') {
         // Show manual link option
-        const shouldCopy = confirm(`⚠️ ${result.message}\n\n${result.invitation_link}\n\nClick OK to copy the link to clipboard.`);
-        if (shouldCopy && result.invitation_link) {
-          navigator.clipboard.writeText(result.invitation_link).then(() => {
+        const shouldCopy = confirm(`⚠️ ${result.message}\n\nClick OK to copy the email to clipboard.`);
+        if (shouldCopy) {
+          navigator.clipboard.writeText(inviteEmail).then(() => {
             alert('Link copied to clipboard!');
           }).catch(() => {
             alert('Failed to copy link. Please copy manually.');
@@ -355,13 +550,6 @@ const agents = AGENT_CONFIG;
         </div>
         
         <div className="flex items-center gap-4">
-          <button 
-            onClick={handleNewSession}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center"
-          >
-            <PlusCircle size={16} className="mr-2" />
-            New Chat
-          </button>
           <button 
             onClick={() => setShowProfileSettings(true)}
             className="p-2 hover:bg-gray-700 rounded"
@@ -514,15 +702,7 @@ const agents = AGENT_CONFIG;
             {activeSection === 'agents' && agents.map(agent => (
               <div
                   key={agent.id}
-                  onClick={() => {
-                    // Create a new unique session for this agent
-                    const newSessionId = `${profile?.id}_${agent.id}_${Date.now()}`;
-                    setSelectedAgent(agent);
-                    setSelectedAvatarId(agent.id);
-                    setCurrentSessionId(newSessionId);
-                    setIsGroupSession(false);
-                    setMessages([]);
-                  }}
+                  onClick={() => handleAgentSelect(agent)}
                   className={`p-2 rounded mb-2 cursor-pointer flex items-center ${
                     selectedAgent?.id === agent.id ? 'bg-[#2D3B4F]' : 'hover:bg-[#2D3B4F]/50'
                   }`}
@@ -700,7 +880,7 @@ const agents = AGENT_CONFIG;
                     type="text"
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                    onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
                     placeholder="Type a message..."
                     className="flex-1 bg-[#1B2431] text-white px-4 py-2 rounded-l-lg focus:outline-none"
                     disabled={!textEnabled}
@@ -720,7 +900,7 @@ const agents = AGENT_CONFIG;
           {/* WebSocket Debug Console */}
           <div className="border-t border-gray-700">
             <WebSocketDebugger 
-              websocket={websocket?.ws || null} 
+              websocket={websocket?.rawWebSocket || null} 
               status={connectionStatus} 
               logs={websocketLogs}
               className="bg-black"

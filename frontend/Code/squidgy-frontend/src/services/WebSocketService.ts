@@ -32,6 +32,10 @@ class WebSocketService {
     };
   }
 
+  public get rawWebSocket(): WebSocket | null {
+    return this.ws;
+  }
+
   public connect(): Promise<WebSocket> {
     return new Promise((resolve, reject) => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -41,9 +45,10 @@ class WebSocketService {
       
       this.setStatus('connecting');
       
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsBase = process.env.NEXT_PUBLIC_API_BASE;
-      const wsUrl = `${wsProtocol}//${wsBase}/ws/${this.config.userId}/${this.config.sessionId}`;
+      // Use the backend URL and replace http/https with ws/wss
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      const wsUrl = backendUrl.replace(/^https?:/, window.location.protocol === 'https:' ? 'wss:' : 'ws:') + 
+                   `/ws/${this.config.userId}/${this.config.sessionId}`;
       
       // Log the connecting destination
       if (this.config.onLog) {
