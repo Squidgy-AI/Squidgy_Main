@@ -1,0 +1,42 @@
+/Users/somasekharaddakula/Library/Python/3.9/lib/python/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+INFO:     Started server process [44203]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+Using Supabase URL: https://aoteeitreschwzkbpqyd.supabase.co
+Application initialized
+  Vector search result: No matches found for agent 'presaleskb'
+✓ Basic query detected: Any agent (including presaleskb) can handle: 'Hello'
+✓ Agent match SUCCESS: presaleskb is appropriate for this query (confidence: 0.400)
+→ Agent presaleskb is appropriate for this query
+
+============================================================
+CALL_N8N_WEBHOOK - RAW RESPONSE:
+============================================================
+{
+  "output": "{\n  \"user_id\": \"test_user\",\n  \"session_id\": \"test_session\",\n  \"agent_name\": \"presaleskb\",\n  \"timestamp_of_call_made\": \"2025-06-14T12:03:40.845142\",\n  \"request_id\": \"5aee61ed-ad2c-4b18-96ba-8d9c3121d593\",\n  \"agent_response\": \"Hello! I'm Alex, a Pre-Sales and Solutions Consultant. How can I assist you today? Are you interested in website analysis, automation services, or need information about pricing and ROI? Please feel free to ask any questions you have.\"\n}"
+}
+============================================================
+
+
+================================================================================
+N8N MAIN REQUEST - FULL RESPONSE:
+================================================================================
+Request ID: 5aee61ed-ad2c-4b18-96ba-8d9c3121d593
+Session ID: test_session
+Agent: presaleskb
+User Message: Hello
+--------------------------------------------------------------------------------
+N8N Response:
+{
+  "user_id": "test_user",
+  "session_id": "test_session",
+  "agent_name": "presaleskb",
+  "timestamp_of_call_made": "2025-06-14T12:03:40.845142",
+  "request_id": "5aee61ed-ad2c-4b18-96ba-8d9c3121d593",
+  "agent_response": "Hello! I'm Alex, a Pre-Sales and Solutions Consultant. How can I assist you today? Are you interested in website analysis, automation services, or need information about pricing and ROI? Please feel free to ask any questions you have."
+}
+================================================================================
+
+INFO:     127.0.0.1:61664 - "POST /n8n_main_req/presaleskb/test_session HTTP/1.1" 200 OK

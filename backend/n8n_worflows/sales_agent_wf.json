@@ -1,0 +1,228 @@
+{
+  "name": "Sales Agent Workflow (s2) with Streaming",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Webhook Triggered",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "id": "1"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extract incoming data\nconst data = $input.first().json;\n\n// Extract streaming metadata\nconst request_id = data.request_id || data.original_request_id;\nconst session_id = data.session_id;\nconst user_id = data.user_id;\n\n// Create the payload for your existing REST endpoint\nconst requestPayload = {\n  user_id: data.user_id,\n  session_id: data.session_id,\n  user_input: data.user_message\n};\n\n// Return data with streaming info\nreturn {\n  requestPayload,\n  originalData: data,\n  agentType: 'PreSalesConsultant',\n  streamingConfig: {\n    request_id,\n    session_id,\n    user_id,\n    agent_name: 'sales'\n  }\n};"
+      },
+      "name": "Prepare Sales Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "id": "2"
+    },
+    {
+      "parameters": {
+        "url": "https://squidgy-backend-d9475a8a4505.herokuapp.com/api/stream",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  type: 'intermediate',\n  user_id: $json.streamingConfig.user_id,\n  agent_name: 'sales',\n  message: 'Analyzing your business requirements...',\n  progress: 30,\n  metadata: {\n    request_id: $json.streamingConfig.request_id,\n    session_id: $json.streamingConfig.session_id,\n    timestamp: new Date().toISOString(),\n    stage: 'initial'\n  }\n}) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "name": "Stream Initial Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 450],
+      "id": "3",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://squidgy-backend-d9475a8a4505.herokuapp.com/chat",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestPayload) }}",
+        "options": {
+          "timeout": 60000,
+          "headers": {
+            "x-agent-type": "PreSalesConsultant"
+          }
+        }
+      },
+      "name": "Call Backend - Sales",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 300],
+      "id": "4"
+    },
+    {
+      "parameters": {
+        "url": "https://squidgy-backend-d9475a8a4505.herokuapp.com/api/stream",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  type: 'intermediate',\n  user_id: $node[\"Prepare Sales Request\"].json.streamingConfig.user_id,\n  agent_name: 'sales',\n  message: 'Processing pricing and product information...',\n  progress: 60,\n  metadata: {\n    request_id: $node[\"Prepare Sales Request\"].json.streamingConfig.request_id,\n    session_id: $node[\"Prepare Sales Request\"].json.streamingConfig.session_id,\n    timestamp: new Date().toISOString(),\n    stage: 'processing'\n  }\n}) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "name": "Stream Processing Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [850, 450],
+      "id": "5",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process the response from backend\nconst response = $input.first().json;\nconst originalData = $node[\"Prepare Sales Request\"].json.originalData;\nconst streamingConfig = $node[\"Prepare Sales Request\"].json.streamingConfig;\n\n// Extract the agent response\nlet agentResponse = '';\nif (response.agent) {\n  agentResponse = response.agent;\n} else if (response.message) {\n  agentResponse = response.message;\n} else {\n  agentResponse = 'I can help you with our products and pricing. Could you tell me more about your business needs?';\n}\n\n// Analyze content for tool usage\nconst toolsUsed = [];\nif (agentResponse.toLowerCase().includes('pricing') || agentResponse.toLowerCase().includes('cost')) {\n  toolsUsed.push('pricing_calculator');\n}\nif (agentResponse.toLowerCase().includes('product') || agentResponse.toLowerCase().includes('feature')) {\n  toolsUsed.push('product_catalog');\n}\n\n// Return the formatted response\nreturn {\n  user_id: originalData.user_id,\n  agent_name: 'sales',\n  agent_response: agentResponse,\n  session_id: originalData.session_id,\n  status: 'completed',\n  metadata: {\n    response_time: new Date().getTime() - parseInt(originalData.original_request_id || '0'),\n    backend_response: response,\n    tools_used: toolsUsed,\n    request_id: streamingConfig.request_id,\n    session_id: streamingConfig.session_id\n  }\n};"
+      },
+      "name": "Process Sales Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1050, 300],
+      "id": "6"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.metadata.tools_used.length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "name": "Check for Tools Usage",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1250, 300],
+      "id": "7"
+    },
+    {
+      "parameters": {
+        "url": "https://squidgy-backend-d9475a8a4505.herokuapp.com/api/stream",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  type: 'tools_usage',\n  user_id: $json.user_id,\n  agent_name: 'sales',\n  message: 'Using specialized tools for accurate information...',\n  progress: 80,\n  metadata: {\n    request_id: $json.metadata.request_id,\n    session_id: $json.metadata.session_id,\n    timestamp: new Date().toISOString(),\n    stage: 'tools_usage',\n    tools: $json.metadata.tools_used\n  }\n}) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "name": "Stream Tools Usage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1450, 250],
+      "id": "8",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://squidgy-backend-d9475a8a4505.herokuapp.com/api/stream",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  type: 'complete',\n  user_id: $json.user_id,\n  agent_name: 'sales',\n  message: 'Response ready',\n  progress: 100,\n  agent_response: $json.agent_response,\n  metadata: {\n    request_id: $json.metadata.request_id,\n    session_id: $json.metadata.session_id,\n    timestamp: new Date().toISOString(),\n    stage: 'complete',\n    response_time: $json.metadata.response_time\n  }\n}) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "name": "Stream Final Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1450, 450],
+      "id": "9",
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Webhook Triggered": {
+      "main": [
+        [
+          {
+            "node": "Prepare Sales Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sales Request": {
+      "main": [
+        [
+          {
+            "node": "Stream Initial Status",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Call Backend - Sales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Backend - Sales": {
+      "main": [
+        [
+          {
+            "node": "Stream Processing Status",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Process Sales Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Sales Response": {
+      "main": [
+        [
+          {
+            "node": "Check for Tools Usage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check for Tools Usage": {
+      "main": [
+        [
+          {
+            "node": "Stream Tools Usage",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stream Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stream Tools Usage": {
+      "main": [
+        [
+          {
+            "node": "Stream Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
