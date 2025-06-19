@@ -25,25 +25,6 @@ const EnhancedLoginForm: React.FC = () => {
     setMessage('');
   }, [mode]);
 
-  const handleSocialLogin = async (provider: 'google' | 'apple' | 'whatsapp') => {
-    try {
-      setLoading(true);
-      setError('');
-      
-      if (provider === 'google') {
-        await signIn('google');
-      } else if (provider === 'apple') {
-        await signIn('apple');
-      } else if (provider === 'whatsapp') {
-        // This would need a custom implementation
-        setError('WhatsApp login is coming soon');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Error with social login. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -177,6 +158,8 @@ const EnhancedLoginForm: React.FC = () => {
         </button>
       </form>
       
+      {/* Social login section hidden as requested */}
+      {/*
       <div className="mt-6">
         <div className="relative flex items-center">
           <div className="flex-grow border-t border-gray-700"></div>
@@ -219,6 +202,7 @@ const EnhancedLoginForm: React.FC = () => {
           </button>
         </div>
       </div>
+      */}
       
       <div className="mt-6 text-center text-gray-400">
         {mode === 'login' ? (
