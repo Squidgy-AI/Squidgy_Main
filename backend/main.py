@@ -3014,6 +3014,61 @@ async def get_chat_history(session_id: str):
         logger.error(f"Error fetching chat history: {str(e)}")
         return {'history': [], 'status': 'error', 'error': str(e)}
 
+# Application logs endpoint
+from collections import deque
+
+# Keep last 100 log entries in memory
+app_logs = deque(maxlen=100)
+
+# Custom log handler to capture logs
+class InMemoryLogHandler(logging.Handler):
+    def emit(self, record):
+        log_entry = {
+            'timestamp': record.created,
+            'level': record.levelname,
+            'message': record.getMessage(),
+            'module': record.module,
+            'function': record.funcName
+        }
+        app_logs.append(log_entry)
+
+# Add the handler to the logger
+memory_handler = InMemoryLogHandler()
+memory_handler.setLevel(logging.INFO)
+logger.addHandler(memory_handler)
+
+@app.get("/logs")
+async def get_application_logs(limit: int = 50):
+    """Get recent application logs"""
+    try:
+        # Get last N logs
+        recent_logs = list(app_logs)[-limit:]
+        
+        # Format logs for response
+        formatted_logs = []
+        for log in recent_logs:
+            formatted_logs.append({
+                'timestamp': datetime.fromtimestamp(log['timestamp']).isoformat(),
+                'level': log['level'],
+                'message': log['message'],
+                'module': log['module'],
+                'function': log['function']
+            })
+        
+        return {
+            'status': 'success',
+            'logs': formatted_logs,
+            'count': len(formatted_logs),
+            'total_available': len(app_logs)
+        }
+    except Exception as e:
+        logger.error(f"Error fetching logs: {str(e)}")
+        return {
+            'status': 'error',
+            'message': str(e),
+            'logs': []
+        }
+
 # Combined endpoint that runs all three tools
 @app.post("/api/website/full-analysis")
 async def full_website_analysis(request: WebsiteAnalysisRequest):

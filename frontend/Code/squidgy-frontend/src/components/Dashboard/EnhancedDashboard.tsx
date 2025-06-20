@@ -16,7 +16,8 @@ import {
   LogOut, 
   UserPlus, 
   FolderPlus, 
-  X 
+  X,
+  Code2 
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import ProfileSettings from '../ProfileSettings';
@@ -50,7 +51,7 @@ const EnhancedDashboard: React.FC = () => {
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
-  // const [showDebugConsole, setShowDebugConsole] = useState(false);
+  const [showDebugConsole, setShowDebugConsole] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected');
   const [agentThinking, setAgentThinking] = useState<string | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
@@ -253,6 +254,16 @@ const agents = AGENT_CONFIG;
   const handleWebSocketMessage = (data: any) => {
     console.log('WebSocket message:', data);
     
+    // Only log important WebSocket events
+    if (data.type === 'error' || data.type === 'connection_status') {
+      setWebsocketLogs(prev => [...prev, {
+        timestamp: new Date(),
+        type: data.type === 'error' ? 'error' : 'info',
+        message: `WebSocket: ${data.message || data.type}`,
+        data: data
+      }]);
+    }
+    
     switch (data.type) {
       case 'agent_thinking':
         setAgentThinking(`${data.agent} is thinking...`);
@@ -267,6 +278,17 @@ const agents = AGENT_CONFIG;
             timestamp: new Date().toISOString()
           };
           console.log('Received agent response:', agentMessage);
+          
+          // Only log if there's an error or important state
+          if (data.error) {
+            setWebsocketLogs(prev => [...prev, {
+              timestamp: new Date(),
+              type: 'error',
+              message: `Agent error: ${data.error}`,
+              data: data
+            }]);
+          }
+          
           addMessage(agentMessage);
           
           // Save agent message to database
@@ -283,6 +305,15 @@ const agents = AGENT_CONFIG;
             });
           }
         }
+        break;
+        
+      case 'error':
+        setWebsocketLogs(prev => [...prev, {
+          timestamp: new Date(),
+          type: 'error',
+          message: `Error: ${data.message}`,
+          data: data
+        }]);
         break;
     }
   };
@@ -435,6 +466,7 @@ const agents = AGENT_CONFIG;
     
     try {
       console.log('Saving message to database:', { message: message.substring(0, 50), sender, currentSessionId });
+      
       const { error } = await supabase
         .from('chat_history')
         .insert({
@@ -447,6 +479,12 @@ const agents = AGENT_CONFIG;
         
       if (error) {
         console.error('Error saving message to database:', error);
+        setWebsocketLogs(prev => [...prev, {
+          timestamp: new Date(),
+          type: 'error',
+          message: `Database error: ${error.message}`,
+          data: error
+        }]);
       }
     } catch (error) {
       console.error('Error in saveMessageToDatabase:', error);
@@ -541,7 +579,18 @@ const agents = AGENT_CONFIG;
     
     // Send via WebSocket
     console.log('WebSocket status:', websocket.getStatus(), 'Connection state:', connectionStatus);
-    await websocket.sendMessage(userMessage);
+    
+    try {
+      await websocket.sendMessage(userMessage);
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      setWebsocketLogs(prev => [...prev, {
+        timestamp: new Date(),
+        type: 'error',
+        message: `Failed to send message: ${error}`,
+        data: error
+      }]);
+    }
     
     setInputMessage('');
     setAgentThinking('AI is thinking...');
@@ -657,6 +706,15 @@ const agents = AGENT_CONFIG;
         </div>
         
         <div className="flex items-center gap-4">
+          <button 
+            onClick={() => setShowDebugConsole(!showDebugConsole)}
+            className={`p-2 hover:bg-gray-700 rounded transition-colors ${
+              showDebugConsole ? 'bg-gray-700 text-green-400' : 'text-gray-400'
+            }`}
+            title="Toggle WebSocket Debug Console"
+          >
+            <Code2 size={20} />
+          </button>
           <button 
             onClick={() => setShowProfileSettings(true)}
             className="p-2 hover:bg-gray-700 rounded"
@@ -1023,14 +1081,16 @@ const agents = AGENT_CONFIG;
           </div>
 
           {/* WebSocket Debug Console */}
-          <div className="border-t border-gray-700">
-            <WebSocketDebugger 
-              websocket={websocket?.rawWebSocket || null} 
-              status={connectionStatus} 
-              logs={websocketLogs}
-              className="bg-black"
-            />
-          </div>
+          {showDebugConsole && (
+            <div className="border-t border-gray-700">
+              <WebSocketDebugger 
+                websocket={websocket?.rawWebSocket || null} 
+                status={connectionStatus} 
+                logs={websocketLogs}
+                className="bg-black"
+              />
+            </div>
+          )}
         </div>
       </div>
       
