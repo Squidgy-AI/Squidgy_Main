@@ -88,6 +88,24 @@ class WebSocketService {
         this.ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
+            
+            // Handle ping/pong messages
+            if (data.type === 'ping') {
+              // Respond to server ping with pong
+              this.ws?.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+              return;
+            } else if (data.type === 'pong') {
+              // Server responded to our ping, connection is alive
+              if (this.config.onLog) {
+                this.config.onLog({
+                  type: 'info',
+                  message: 'Received pong from server - connection alive',
+                  data: { timestamp: data.timestamp }
+                });
+              }
+              return;
+            }
+            
             if (this.config.onMessage) {
               this.config.onMessage(data);
             }
@@ -201,7 +219,13 @@ class WebSocketService {
     this.pingInterval = setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         // Send a ping message
-        this.ws.send(JSON.stringify({ type: 'ping' }));
+        this.ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+        if (this.config.onLog) {
+          this.config.onLog({
+            type: 'info',
+            message: 'Sent ping to server to keep connection alive'
+          });
+        }
       }
     }, 30000);
   }

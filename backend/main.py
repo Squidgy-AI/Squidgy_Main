@@ -1895,6 +1895,23 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
     await websocket.accept()
     
     active_connections[connection_id] = websocket
+    last_activity = time.time()
+    
+    async def send_ping():
+        """Send periodic ping to keep connection alive"""
+        while connection_id in active_connections:
+            try:
+                await asyncio.sleep(30)  # Ping every 30 seconds
+                if connection_id in active_connections:
+                    await websocket.send_json({
+                        "type": "ping",
+                        "timestamp": int(time.time() * 1000)
+                    })
+            except Exception:
+                break
+    
+    # Start ping task
+    ping_task = asyncio.create_task(send_ping())
     
     try:
         # Send initial connection status
@@ -1907,15 +1924,25 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
         
         while True:
             try:
-                data = await websocket.receive_text()
+                # Use timeout to prevent hanging
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
                 message_data = json.loads(data)
+                last_activity = time.time()
                 
                 request_id = message_data.get("requestId", str(uuid.uuid4()))
                 
                 user_input = message_data.get("message", "").strip()
                 
-                # Skip processing for empty messages or connection status messages
-                if not user_input or message_data.get("type") == "connection_status":
+                # Handle ping/pong and skip processing for empty messages  
+                if message_data.get("type") == "ping":
+                    await websocket.send_json({
+                        "type": "pong",
+                        "timestamp": int(time.time() * 1000)
+                    })
+                    continue
+                elif message_data.get("type") == "pong":
+                    continue
+                elif not user_input or message_data.get("type") == "connection_status":
                     continue
                     
                 # Check if this request is already being processed
@@ -1949,19 +1976,32 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
                 finally:
                     active_requests.discard(request_id)
                     
+            except asyncio.TimeoutError:
+                logger.info(f"WebSocket timeout for {connection_id}, checking if still alive")
+                try:
+                    await websocket.send_json({
+                        "type": "ping",
+                        "timestamp": int(time.time() * 1000)
+                    })
+                except Exception:
+                    logger.info(f"Connection {connection_id} appears dead, closing")
+                    break
             except json.JSONDecodeError:
                 logger.warning("Invalid JSON received, skipping")
                 continue
                 
     except WebSocketDisconnect:
-        if connection_id in active_connections:
-            del active_connections[connection_id]
         logger.info(f"Client disconnected: {connection_id}")
         
     except Exception as e:
         logger.exception(f"WebSocket error: {str(e)}")
+        
+    finally:
+        # Clean up
+        ping_task.cancel()
         if connection_id in active_connections:
             del active_connections[connection_id]
+        logger.info(f"WebSocket connection closed: {connection_id}")
 
 
 @app.get("/api/agents/config")
